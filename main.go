@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"./parse"
 	"github.com/murdinc/cli"
 )
 
@@ -35,8 +36,8 @@ func main() {
 				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to parse", Optional: false},
 			},
 			Action: func(c *cli.Context) {
-				//obd := iso9141.New()
-				//obd.UploadBIN(c.NamedArg("sysex"))
+				parse, _ := parse.New(c.NamedArg("sysex"))
+				parse.DisplayPatches()
 			},
 		},
 	}
