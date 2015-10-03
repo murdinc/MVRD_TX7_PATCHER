@@ -78,8 +78,8 @@ func New(fileName string) (Bank, error) {
 		log("DisplayPatches - Error opening bank file", err)
 		return Bank{}, err
 	}
-	fileSize := fi.Size()
 
+	fileSize := fi.Size()
 	sysexFile := make([]byte, 4104)
 
 	// Read in all the bytes
@@ -138,7 +138,7 @@ func (bank *Bank) doBulkVoices() {
 			PitchEGLevel3: bank.Raw[voiceStart+108],
 			PitchEGLevel4: bank.Raw[voiceStart+109],
 
-			Algorithm: bank.Raw[voiceStart+110], // 5 VERIFIED
+			Algorithm: bank.Raw[voiceStart+110], // 5
 			//unsigned : : 3,
 
 			Feedback:   bank.Raw[voiceStart+111] & 0x7,        // bits 0 - 2
