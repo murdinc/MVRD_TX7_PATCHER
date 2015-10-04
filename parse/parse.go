@@ -167,36 +167,39 @@ func (bank *Bank) doBulkVoices() {
 func doBulkOperators(raw []byte) []Operator {
 	operators := make([]Operator, 6)
 
+	operatorStart := 0
+
 	for i := 0; i < 6; i++ {
 		operators[i] = Operator{
-			EGRate1:                raw[0],
-			EGRate2:                raw[1],
-			EGRate3:                raw[2],
-			EGRate4:                raw[3],
-			EGLevel1:               raw[4],
-			EGLevel2:               raw[5],
-			EGLevel3:               raw[6],
-			EGLevel4:               raw[7],
-			LevelScalingBreakPoint: raw[8],
-			ScaleLeftDepth:         raw[9],
-			ScaleRightDepth:        raw[10],
+			EGRate1:                raw[operatorStart],
+			EGRate2:                raw[operatorStart+1],
+			EGRate3:                raw[operatorStart+2],
+			EGRate4:                raw[operatorStart+3],
+			EGLevel1:               raw[operatorStart+4],
+			EGLevel2:               raw[operatorStart+5],
+			EGLevel3:               raw[operatorStart+6],
+			EGLevel4:               raw[operatorStart+7],
+			LevelScalingBreakPoint: raw[operatorStart+8],
+			ScaleLeftDepth:         raw[operatorStart+9],
+			ScaleRightDepth:        raw[operatorStart+10],
 
-			ScaleLeftCurve:  raw[11] & 0x3,        // bits 0 - 1
-			ScaleRightCurve: (raw[11] & 0xC) >> 2, // bits 2 - 3
+			ScaleLeftCurve:  raw[operatorStart+11] & 0x3,        // bits 0 - 1
+			ScaleRightCurve: (raw[operatorStart+11] & 0xC) >> 2, // bits 2 - 3
 
-			RateScale: raw[12] & 0x7,         // bits 0 - 2
-			Detune:    (raw[12] & 0x78) >> 3, // bits 3 - 6
+			RateScale: raw[operatorStart+12] & 0x7,         // bits 0 - 2
+			Detune:    (raw[operatorStart+12] & 0x78) >> 3, // bits 3 - 6
 
-			AmplitudeModulationSensitivity: raw[13] & 0x3,         // bits 0 - 1
-			KeyVelocitySensitivity:         (raw[13] & 0x1C) >> 2, // bites 2 - 4
+			AmplitudeModulationSensitivity: raw[operatorStart+13] & 0x3,         // bits 0 - 1
+			KeyVelocitySensitivity:         (raw[operatorStart+13] & 0x1C) >> 2, // bites 2 - 4
 
-			OutputLevel: raw[14],
+			OutputLevel: raw[operatorStart+14],
 
-			OscillatorMode:  raw[15] & 0x1,         // bit 0
-			FrequencyCoarse: (raw[15] & 0x3E) >> 1, // bits 1 - 5
+			OscillatorMode:  raw[operatorStart+15] & 0x1,         // bit 0
+			FrequencyCoarse: (raw[operatorStart+15] & 0x3E) >> 1, // bits 1 - 5
 
-			FrequencyFine: raw[16],
+			FrequencyFine: raw[operatorStart+16],
 		}
+		operatorStart += 17
 	}
 
 	return operators
@@ -212,7 +215,7 @@ func (bank *Bank) DisplayPatches() error {
 	log(fmt.Sprintf("Size: %d", bank.Size), nil)
 
 	for i := 0; i < 32; i++ {
-		log(fmt.Sprintf("[%d] Name: %s", i+1, bank.Voice[i].Name), nil)
+		log(fmt.Sprintf("[%d] Name: %v", i+1, bank.Voice[i].Name), nil)
 
 		// Start Operators
 		for n, operator := range bank.Voice[i].Operators {

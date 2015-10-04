@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"./parse"
+	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
 	"github.com/murdinc/cli"
 )
 
@@ -41,6 +42,60 @@ func main() {
 			Action: func(c *cli.Context) {
 				parse, _ := parse.New(c.NamedArg("folder"))
 				parse.DisplayPatches()
+			},
+		},
+		{
+			Name:        "monitor",
+			ShortName:   "m",
+			Example:     "monitor",
+			Description: "Monitors all midi in messages",
+			Action: func(c *cli.Context) {
+				midi, _ := midi.New()
+				midi.Monitor()
+			},
+		},
+		{
+			Name:        "itentity",
+			ShortName:   "i",
+			Example:     "itentity",
+			Description: "Lists Identities of connected devices",
+			Action: func(c *cli.Context) {
+				midi, _ := midi.New()
+				midi.Identity()
+			},
+		},
+		{
+			Name:        "destinations",
+			ShortName:   "d",
+			Example:     "destinations",
+			Description: "List all destinations",
+			Action: func(c *cli.Context) {
+				midi, _ := midi.New()
+				midi.ListDestinations()
+			},
+		},
+		{
+			Name:        "sources",
+			ShortName:   "s",
+			Example:     "sources",
+			Description: "List all Sources",
+			Action: func(c *cli.Context) {
+				midi, _ := midi.New()
+				midi.ListSources()
+			},
+		},
+		{
+			Name:        "test",
+			ShortName:   "t",
+			Example:     "test",
+			Description: "test send",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to send", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				sysex, _ := parse.New(c.NamedArg("sysex"))
+				midi, _ := midi.New()
+				midi.TestSend(sysex.Raw)
 			},
 		},
 	}
