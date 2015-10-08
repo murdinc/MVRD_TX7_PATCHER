@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/youpy/go-coremidi"
+	"github.com/murdinc/go-coremidi"
 )
 
 type MidiConnection struct {
@@ -74,18 +74,24 @@ func (midi *MidiConnection) TestSend(sysex []byte) {
 	for d, destination := range destinations {
 		log(fmt.Sprintf("               Destination #: %d       Name: %s        Manufacturer: %s", d+1, destination.Name(), destination.Manufacturer()), nil)
 
-		midi.testNotes(destination)
+		if d == 3 {
 
-		time.Sleep(10 * time.Second)
+			midi.testNotes(destination)
 
-		packet := coremidi.NewPacket([]byte{0xF0, 0x43, 0x00, 0x09, 0xF7}) // Status, ID, Substatus/Ch., Format Number, EOX
+			sysex := coremidi.NewSysexMessage(&destination, []byte{0xF0, 0x43, 0x20, 0x09, 0xF7}, func(sysexMsg *coremidi.SysexMessage) {
+				log(fmt.Sprintf("Sysex Dump Command Completed: [%X]\n", sysexMsg.Message), nil)
+				return
+			})
+			err := sysex.Send()
 
-		err := packet.Send(&midi.output, &destination)
+			if err != nil {
+				log(fmt.Sprintf("                                          failed to send sysex"), nil)
+				log("", nil)
+			}
 
-		if err != nil {
-			log(fmt.Sprintf("                                          failed to send sysex"), nil)
-			log("", nil)
 		}
+
+		//time.Sleep(100 * time.Millisecond)
 
 	}
 
@@ -169,27 +175,13 @@ func (midi *MidiConnection) initCoreMidi() {
 
 	// Creates a new routine to run when something comes in on port
 	input, err := coremidi.NewInputPort(midi.client, "test", func(source coremidi.Source, value []byte) {
-		fmt.Printf("                  Source: %v, Manufacturer: %v, Value: %v %X\n", source.Name(), source.Manufacturer(), value, value)
 
 		if value[0] == 0xF0 {
-
+			log(fmt.Sprintf("SYSEX MESSAGE: %X	Source: %v", value, source.Name()), nil)
 		} else {
-			log(fmt.Sprintf("NON SYSEX MESSAGE: %X", value), nil)
+			log(fmt.Sprintf("NON SYSEX MESSAGE: %X	Source: %v", value, source.Name()), nil)
 		}
 
-		/*
-			        note := value[1]
-					   if value[2] == 0 || isNoteOff(value[0]) {
-					       i := 0
-					       for i = 0; i < len(a.notes) && a.notes[i].Key != note; i++ {
-					       }
-					       if len(a.notes) > i {
-					           a.notes[i].Up = a.now
-					       }
-					   } else {
-					       a.notes = append(a.notes, &Note{Key: note, Start: 0.0, Elapsed: 0.0, Up: 0.0, Down: a.now})
-					   }
-		*/
 		return
 	})
 	if err != nil {

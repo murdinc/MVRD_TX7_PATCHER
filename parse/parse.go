@@ -80,7 +80,7 @@ func New(fileName string) (Bank, error) {
 	}
 
 	fileSize := fi.Size()
-	sysexFile := make([]byte, 4104)
+	sysexFile := make([]byte, fileSize)
 
 	// Read in all the bytes
 	n, err := f.Read(sysexFile)

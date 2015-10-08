@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"./parse"
 	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
+	"github.com/murdinc/MVRD_TX7_PATCHER/parse"
 	"github.com/murdinc/cli"
 )
 
