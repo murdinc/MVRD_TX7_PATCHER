@@ -6,6 +6,7 @@ import (
 
 	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
 	"github.com/murdinc/MVRD_TX7_PATCHER/parse"
+	"github.com/murdinc/MVRD_TX7_PATCHER/ui"
 	"github.com/murdinc/cli"
 )
 
@@ -27,75 +28,90 @@ func main() {
 				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to parse", Optional: false},
 			},
 			Action: func(c *cli.Context) {
-				parse, _ := parse.New(c.NamedArg("sysex"))
-				parse.DisplayPatches()
+				bank, _ := parse.Open(c.NamedArg("sysex"))
+				bank.DisplayVoices()
 			},
 		},
 		{
-			Name:        "parseDirectory",
-			ShortName:   "pd",
+			Name:        "test",
+			ShortName:   "t",
 			Example:     "parse /foldername",
 			Description: "Parse all sysex files in a directory and display contents",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "parse /foldername", Description: "The name of the sysex folder to parse", Optional: false},
 			},
 			Action: func(c *cli.Context) {
-				parse, _ := parse.New(c.NamedArg("folder"))
-				parse.DisplayPatches()
+				library, _ := parse.OpenDir(c.NamedArg("folder"))
+				ui.Start(library)
 			},
 		},
 		{
-			Name:        "monitor",
-			ShortName:   "m",
-			Example:     "monitor",
-			Description: "Monitors all midi in messages",
-			Action: func(c *cli.Context) {
-				midi, _ := midi.New()
-				midi.Monitor()
-			},
-		},
-		{
-			Name:        "itentity",
-			ShortName:   "i",
-			Example:     "itentity",
-			Description: "Lists Identities of connected devices",
-			Action: func(c *cli.Context) {
-				midi, _ := midi.New()
-				midi.Identity()
-			},
-		},
-		{
-			Name:        "destinations",
-			ShortName:   "d",
-			Example:     "destinations",
-			Description: "List all destinations",
-			Action: func(c *cli.Context) {
-				midi, _ := midi.New()
-				midi.ListDestinations()
-			},
-		},
-		{
-			Name:        "sources",
-			ShortName:   "s",
-			Example:     "sources",
-			Description: "List all Sources",
-			Action: func(c *cli.Context) {
-				midi, _ := midi.New()
-				midi.ListSources()
-			},
-		},
-		{
-			Name:        "test",
-			ShortName:   "t",
-			Example:     "test",
-			Description: "test send",
+			Name:        "listFiles",
+			ShortName:   "lf",
+			Example:     "listFiles /foldername",
+			Description: "List all sysex files in a directory and display contents",
 			Arguments: []cli.Argument{
-				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to send", Optional: false},
+				cli.Argument{Name: "folder", Usage: "listFiles /foldername", Description: "The name of the sysex folder to parse", Optional: false},
 			},
 			Action: func(c *cli.Context) {
-				sysex, _ := parse.New(c.NamedArg("sysex"))
-				midi, _ := midi.New()
-				midi.TestSend(sysex.Raw)
+				library, _ := parse.OpenDir(c.NamedArg("folder"))
+				library.DisplayFileNames()
+			},
+		},
+		{
+			Name:        "listVoiceNames",
+			ShortName:   "lvn",
+			Example:     "listVoiceNames /foldername",
+			Description: "List all voice names of all the sysex files in a directory",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "folder", Usage: "listVoiceNames /foldername", Description: "The name of the sysex folder to parse", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				library, _ := parse.OpenDir(c.NamedArg("folder"))
+				library.DisplayVoiceNames()
+			},
+		},
+		{
+			Name:        "upload",
+			ShortName:   "u",
+			Example:     "upload ./sysex/WEIRD1.SYX",
+			Description: "upload",
+			Arguments: []cli.Argument{
+				cli.Argument{Name: "sysex", Usage: "upload ./sysex/WEIRD1.SYX", Description: "The name of the sysex bank file to upload", Optional: false},
+			},
+			Action: func(c *cli.Context) {
+				sysex, _ := parse.Open(c.NamedArg("sysex"))
+				midi.Upload(sysex.Raw)
+			},
+		},
+		{
+			Name:        "displayVoice",
+			ShortName:   "dv",
+			Example:     "displayVoice",
+			Description: "Download the currently selected voice and Display it",
+			Action: func(c *cli.Context) {
+
+				callback := func(sysexBytes []byte) {
+					bank, _ := parse.New(sysexBytes)
+					bank.DisplayVoices()
+				}
+
+				midi.DownloadVoice(callback)
+			},
+		},
+		{
+			Name:        "displayBank",
+			ShortName:   "db",
+			Example:     "displayBank",
+			Description: "Download the bank and Display it",
+			Action: func(c *cli.Context) {
+
+				callback := func(sysexBytes []byte) {
+					bank, _ := parse.New(sysexBytes)
+					bank.DisplayVoices()
+				}
+
+				midi.DownloadBank(callback)
 			},
 		},
 	}

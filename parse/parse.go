@@ -2,11 +2,20 @@ package parse
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
+	"strings"
 )
+
+type Library struct {
+	Banks      []Bank
+	FileCount  int
+	VoiceCount int
+}
 
 type Bank struct {
 	FileName         string
+	VoiceCount       int
 	Voice            []Voice
 	Raw              []byte
 	Start            byte
@@ -70,32 +79,103 @@ type Operator struct {
 ////////////////..........
 const debug = false
 
-func New(fileName string) (Bank, error) {
+func OpenDir(foldername string) (Library, error) {
+
+	files, err := ioutil.ReadDir(foldername)
+	if err != nil {
+		log("OpenDir", err)
+	}
+
+	banks := make([]Bank, 0)
+	voiceCount := 0
+
+	for _, file := range files {
+		if strings.HasSuffix(strings.ToLower(file.Name()), ".syx") {
+			//log(fmt.Sprintf("Scanning File: [%s]", file.Name()), nil)
+
+			bank, err := Open(foldername + file.Name())
+
+			if err == nil {
+				banks = append(banks, bank)
+				voiceCount += 32
+				bank.Parse()
+			}
+		}
+	}
+
+	library := Library{Banks: banks, FileCount: len(banks), VoiceCount: voiceCount}
+
+	log(fmt.Sprintf("Files:  [ %d ]", library.FileCount), nil)
+
+	log(fmt.Sprintf("Voices: [ %d ]", library.VoiceCount), nil)
+
+	return library, nil
+
+}
+
+func (l *Library) DisplayFileNames() {
+
+	i := 0
+	for _, bank := range l.Banks {
+		i++
+		log(fmt.Sprintf("[# %d] File Name: [%s]", i, bank.FileName), nil)
+	}
+
+}
+
+func (l *Library) DisplayVoiceNames() {
+
+	i := 0
+	for _, bank := range l.Banks {
+
+		for _, voice := range bank.Voice {
+			i++
+			log(fmt.Sprintf("[# %d]		Voice Name: [%s]		File Name: [%s] ", i, voice.Name, bank.FileName), nil)
+		}
+
+	}
+
+}
+
+func Open(fileName string) (Bank, error) {
 
 	f, err := os.Open(fileName)
 	fi, err := f.Stat()
 	if err != nil {
-		log("DisplayPatches - Error opening bank file", err)
+		log(fmt.Sprintf("Open - Error opening bank file %s", fileName), err)
 		return Bank{}, err
 	}
+	defer f.Close()
 
 	fileSize := fi.Size()
 	sysexFile := make([]byte, fileSize)
 
 	// Read in all the bytes
-	n, err := f.Read(sysexFile)
+	_, err = f.Read(sysexFile)
 	if err != nil {
-		log("DisplayPatches - Error reading bank file", err)
+		log("Open - Error reading bank file", err)
 		return Bank{}, err
 	}
-	log(fmt.Sprintf("DisplayPatches - reading %d bytes from bank file.", n), nil)
-	log(fmt.Sprintf("DisplayPatches - [%s] is %d bytes long", fileName, fileSize), nil)
+	//log(fmt.Sprintf("Open - reading %d bytes from bank file.", n), nil)
+	//log(fmt.Sprintf("Open - [%s] is %d bytes long", fileName, fileSize), nil)
 
-	bank := Bank{Raw: sysexFile}
+	bank := Bank{Raw: sysexFile, FileName: fileName}
 
 	err = bank.Parse()
 	if err != nil {
-		log("DisplayPatches - Error parsing bank file", err)
+		log("Open - Error parsing bank file", err)
+		return Bank{}, err
+	}
+
+	return bank, nil
+}
+
+func New(raw []byte) (Bank, error) {
+	bank := Bank{Raw: raw}
+
+	err := bank.Parse()
+	if err != nil {
+		log("New - Error parsing bank file", err)
 		return Bank{}, err
 	}
 
@@ -109,8 +189,14 @@ func (bank *Bank) Parse() error {
 	bank.Format = bank.Raw[3]
 	bank.Size = int16((int16(bank.Raw[4]) << 7) | int16(bank.Raw[5]))
 
-	// Only if this is 32 Voices
-	bank.doBulkVoices()
+	switch bank.Format {
+	case 0x00:
+		bank.VoiceCount = 1
+		bank.doSingleVoice()
+	default:
+		bank.VoiceCount = 32
+		bank.doBulkVoices()
+	}
 
 	bank.Checksum = bank.Raw[bank.Size+6]
 	bank.End = bank.Raw[bank.Size+7] //F7
@@ -118,12 +204,53 @@ func (bank *Bank) Parse() error {
 	return nil
 }
 
+func (bank *Bank) doSingleVoice() {
+
+	voiceStart := 6
+
+	bank.Voice = make([]Voice, 1)
+
+	bank.Voice[0] = Voice{
+
+		Operators: doSingleVoiceOperators(bank.Raw[voiceStart : voiceStart+126]),
+
+		PitchEGRate1:  bank.Raw[voiceStart+126],
+		PitchEGRate2:  bank.Raw[voiceStart+127],
+		PitchEGRate3:  bank.Raw[voiceStart+128],
+		PitchEGRate4:  bank.Raw[voiceStart+129],
+		PitchEGLevel1: bank.Raw[voiceStart+130],
+		PitchEGLevel2: bank.Raw[voiceStart+131],
+		PitchEGLevel3: bank.Raw[voiceStart+132],
+		PitchEGLevel4: bank.Raw[voiceStart+133],
+
+		Algorithm: bank.Raw[voiceStart+134],
+
+		Feedback:   bank.Raw[voiceStart+135],
+		OscKeySync: bank.Raw[voiceStart+136],
+
+		LfoSpeed: bank.Raw[voiceStart+137],
+		LfoDelay: bank.Raw[voiceStart+138],
+
+		LfoPitchModDepth: bank.Raw[voiceStart+139],
+		LfoAMDepth:       bank.Raw[voiceStart+140],
+
+		LfoSync:                bank.Raw[voiceStart+141],
+		LfoWave:                bank.Raw[voiceStart+142],
+		LfoPitchModSensitivity: bank.Raw[voiceStart+143],
+
+		Transpose: bank.Raw[voiceStart+144],
+
+		Name: string(bank.Raw[voiceStart+145 : voiceStart+155]),
+	}
+
+}
+
 func (bank *Bank) doBulkVoices() {
 	bank.Voice = make([]Voice, 32)
 
 	voiceStart := 6
 
-	for i := 0; i < 32; i++ {
+	for i := 0; i < bank.VoiceCount; i++ {
 
 		bank.Voice[i] = Voice{
 
@@ -138,8 +265,7 @@ func (bank *Bank) doBulkVoices() {
 			PitchEGLevel3: bank.Raw[voiceStart+108],
 			PitchEGLevel4: bank.Raw[voiceStart+109],
 
-			Algorithm: bank.Raw[voiceStart+110], // 5
-			//unsigned : : 3,
+			Algorithm: bank.Raw[voiceStart+110],
 
 			Feedback:   bank.Raw[voiceStart+111] & 0x7,        // bits 0 - 2
 			OscKeySync: (bank.Raw[voiceStart+111] & 0x8) >> 3, // bit 3
@@ -205,95 +331,107 @@ func doBulkOperators(raw []byte) []Operator {
 	return operators
 }
 
-func (bank *Bank) DisplayPatches() error {
+func doSingleVoiceOperators(raw []byte) []Operator {
+	operators := make([]Operator, 6)
+
+	operatorStart := 0
+
+	for i := 0; i < 6; i++ {
+		operators[i] = Operator{
+			EGRate1:                raw[operatorStart],
+			EGRate2:                raw[operatorStart+1],
+			EGRate3:                raw[operatorStart+2],
+			EGRate4:                raw[operatorStart+3],
+			EGLevel1:               raw[operatorStart+4],
+			EGLevel2:               raw[operatorStart+5],
+			EGLevel3:               raw[operatorStart+6],
+			EGLevel4:               raw[operatorStart+7],
+			LevelScalingBreakPoint: raw[operatorStart+8],
+			ScaleLeftDepth:         raw[operatorStart+9],
+			ScaleRightDepth:        raw[operatorStart+10],
+
+			ScaleLeftCurve:  raw[operatorStart+11],
+			ScaleRightCurve: raw[operatorStart+12],
+
+			RateScale: raw[operatorStart+13],
+
+			AmplitudeModulationSensitivity: raw[operatorStart+14],
+			KeyVelocitySensitivity:         raw[operatorStart+15],
+
+			OutputLevel: raw[operatorStart+16],
+
+			OscillatorMode:  raw[operatorStart+17],
+			FrequencyCoarse: raw[operatorStart+18],
+
+			FrequencyFine: raw[operatorStart+19],
+
+			Detune: raw[operatorStart+20],
+		}
+		operatorStart += 21
+	}
+
+	return operators
+
+}
+
+// Repackage one of the 32 voices in order to send it individually
+func (bank *Bank) RePackage() {
+
+}
+
+func (bank *Bank) DisplayVoices() error {
 
 	log(fmt.Sprintf("Start: %X", bank.Start), nil)
 
 	log(fmt.Sprintf("Manufacturer: %X", bank.Manufacturer), nil)
 	log(fmt.Sprintf("Status and Channel: %X", bank.StatusAndChannel), nil)
 	log(fmt.Sprintf("Format: %X", bank.Format), nil)
-	log(fmt.Sprintf("Size: %d", bank.Size), nil)
+	log(fmt.Sprintf("Size: %d", bank.VoiceCount), nil)
 
-	for i := 0; i < 32; i++ {
+	log(fmt.Sprintf("Voice Count: %d", bank.VoiceCount), nil)
+
+	for i := 0; i < bank.VoiceCount; i++ {
 		log(fmt.Sprintf("[%d] Name: %v", i+1, bank.Voice[i].Name), nil)
 
 		// Start Operators
 		for n, operator := range bank.Voice[i].Operators {
-			log(fmt.Sprintf("       Operator %d", n+1), nil)
-			log(fmt.Sprintf("         EGRate1: %d", operator.EGRate1), nil)
-			log(fmt.Sprintf("         EGRate2: %d", operator.EGRate2), nil)
-			log(fmt.Sprintf("         EGRate3: %d", operator.EGRate3), nil)
-			log(fmt.Sprintf("         EGRate4: %d", operator.EGRate4), nil)
+			log(fmt.Sprintf("		Operator %d", n+1), nil)
+			log(fmt.Sprintf("			EGRate1: %.2d		EGLevel1: %.2d		ScaleLeftDepth:  %d", operator.EGRate1, operator.EGLevel1, operator.ScaleLeftDepth), nil)
+			log(fmt.Sprintf("			EGRate2: %.2d		EGLevel2: %.2d		ScaleRightDepth: %d", operator.EGRate2, operator.EGLevel2, operator.ScaleRightDepth), nil)
+			log(fmt.Sprintf("			EGRate3: %.2d		EGLevel3: %.2d		ScaleLeftCurve:  %d", operator.EGRate3, operator.EGLevel3, operator.ScaleLeftCurve), nil)
+			log(fmt.Sprintf("			EGRate4: %.2d		EGLevel4: %.2d		ScaleRightCurve: %d", operator.EGRate4, operator.EGLevel4, operator.ScaleRightCurve), nil)
 			log("", nil)
 
-			log(fmt.Sprintf("         EGLevel1: %d", operator.EGLevel1), nil)
-			log(fmt.Sprintf("         EGLevel2: %d", operator.EGLevel2), nil)
-			log(fmt.Sprintf("         EGLevel3: %d", operator.EGLevel3), nil)
-			log(fmt.Sprintf("         EGLevel4: %d", operator.EGLevel4), nil)
+			log(fmt.Sprintf("			LevelScalingBreakPoint: %d			AmplitudeModulationSensitivity: %d", operator.LevelScalingBreakPoint, operator.AmplitudeModulationSensitivity), nil)
+			log(fmt.Sprintf("			RateScale: %d					KeyVelocitySensitivity: %d", operator.RateScale, operator.KeyVelocitySensitivity), nil)
+			log(fmt.Sprintf("			Detune: %d					OutputLevel: %d", operator.Detune, operator.OutputLevel), nil)
 			log("", nil)
 
-			log(fmt.Sprintf("         LevelScalingBreakPoint: %d ", operator.LevelScalingBreakPoint), nil)
-			log(fmt.Sprintf("         ScaleLeftDepth: %d ", operator.ScaleLeftDepth), nil)
-			log(fmt.Sprintf("         ScaleRightDepth: %d", operator.ScaleRightDepth), nil)
-			log(fmt.Sprintf("         ScaleLeftCurve: %d ", operator.ScaleLeftCurve), nil)
-			log(fmt.Sprintf("         ScaleRightCurve: %d", operator.ScaleRightCurve), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         RateScale: %d", operator.RateScale), nil)
-			log(fmt.Sprintf("         Detune: %d ", operator.Detune), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         AmplitudeModulationSensitivity: %d ", operator.AmplitudeModulationSensitivity), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         KeyVelocitySensitivity: %d ", operator.KeyVelocitySensitivity), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         OutputLevel: %d", operator.OutputLevel), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         OscillatorMode: %d ", operator.OscillatorMode), nil)
-			log("", nil)
-
-			log(fmt.Sprintf("         FrequencyCoarse: %d", operator.FrequencyCoarse), nil)
-			log(fmt.Sprintf("         FrequencyFine: %d", operator.FrequencyFine), nil)
+			log(fmt.Sprintf("			FrequencyCoarse: %d				OscillatorMode: %d", operator.FrequencyCoarse, operator.OscillatorMode), nil)
+			log(fmt.Sprintf("			FrequencyFine: %d", operator.FrequencyFine), nil)
 			log("", nil)
 		}
 		// End Operators
 
-		log(fmt.Sprintf("     PitchEGRate1: %d", bank.Voice[i].PitchEGRate1), nil)
-		log(fmt.Sprintf("     PitchEGRate2: %d", bank.Voice[i].PitchEGRate2), nil)
-		log(fmt.Sprintf("     PitchEGRate3: %d", bank.Voice[i].PitchEGRate3), nil)
-		log(fmt.Sprintf("     PitchEGRate4: %d", bank.Voice[i].PitchEGRate4), nil)
+		log(fmt.Sprintf("		PitchEGRate1: %.2d		PitchEGLevel1: %.2d", bank.Voice[i].PitchEGRate1, bank.Voice[i].PitchEGLevel1), nil)
+		log(fmt.Sprintf("		PitchEGRate2: %.2d		PitchEGLevel2: %.2d", bank.Voice[i].PitchEGRate2, bank.Voice[i].PitchEGLevel2), nil)
+		log(fmt.Sprintf("		PitchEGRate3: %.2d		PitchEGLevel3: %.2d", bank.Voice[i].PitchEGRate3, bank.Voice[i].PitchEGLevel3), nil)
+		log(fmt.Sprintf("		PitchEGRate4: %.2d		PitchEGLevel4: %.2d", bank.Voice[i].PitchEGRate4, bank.Voice[i].PitchEGLevel4), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("     PitchEGLevel1: %d", bank.Voice[i].PitchEGLevel1), nil)
-		log(fmt.Sprintf("     PitchEGLevel2: %d", bank.Voice[i].PitchEGLevel2), nil)
-		log(fmt.Sprintf("     PitchEGLevel3: %d", bank.Voice[i].PitchEGLevel3), nil)
-		log(fmt.Sprintf("     PitchEGLevel4: %d", bank.Voice[i].PitchEGLevel4), nil)
+		log(fmt.Sprintf("		Algorithm: %.2d			Feedback: %.2d			OscKeySync: %.2d", bank.Voice[i].Algorithm, bank.Voice[i].Feedback, bank.Voice[i].OscKeySync), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("     Algorithm: %d", bank.Voice[i].Algorithm), nil)
+		log(fmt.Sprintf("		LfoSpeed: %.2d			LfoPitchModDepth: %.2d", bank.Voice[i].LfoSpeed, bank.Voice[i].LfoPitchModDepth), nil)
+		log(fmt.Sprintf("		LfoDelay: %.2d			LfoAMDepth: %.2d", bank.Voice[i].LfoDelay, bank.Voice[i].LfoAMDepth), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("     Feedback: %d", bank.Voice[i].Feedback), nil)
-		log(fmt.Sprintf("     OscKeySync: %d", bank.Voice[i].OscKeySync), nil)
+		log(fmt.Sprintf("		LfoSync: %.2d", bank.Voice[i].LfoSync), nil)
+		log(fmt.Sprintf("		LfoWave: %.2d", bank.Voice[i].LfoWave), nil)
+		log(fmt.Sprintf("		LfoPitchModSensitivity: %.2d", bank.Voice[i].LfoPitchModSensitivity), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("     LfoSpeed: %d", bank.Voice[i].LfoSpeed), nil)
-		log(fmt.Sprintf("     LfoDelay: %d", bank.Voice[i].LfoDelay), nil)
-		log("", nil)
-
-		log(fmt.Sprintf("     LfoPitchModDepth: %d", bank.Voice[i].LfoPitchModDepth), nil)
-		log(fmt.Sprintf("     LfoAMDepth: %d", bank.Voice[i].LfoAMDepth), nil)
-		log("", nil)
-
-		log(fmt.Sprintf("     LfoSync: %d", bank.Voice[i].LfoSync), nil)
-		log(fmt.Sprintf("     LfoWave: %d", bank.Voice[i].LfoWave), nil)
-		log(fmt.Sprintf("     LfoPitchModSensitivity: %d", bank.Voice[i].LfoPitchModSensitivity), nil)
-		log("", nil)
-
-		log(fmt.Sprintf("     Transpose: %d", bank.Voice[i].Transpose), nil)
+		log(fmt.Sprintf("		Transpose: %.2d", bank.Voice[i].Transpose), nil)
 		log("\n\n", nil)
 
 	}
