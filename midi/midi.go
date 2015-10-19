@@ -79,6 +79,7 @@ func Upload(sysex []byte) {
 
 	if tx7, err = Open(); err != nil {
 		log("error while initializing connection to tx7", err)
+		return
 	}
 
 	// listen button toggles
@@ -116,6 +117,7 @@ func DownloadVoice(callback func(data []byte)) {
 
 	if tx7, err = Open(); err != nil {
 		log("error while initializing connection to tx7", err)
+		return
 	}
 
 	var sysexMessage []byte
@@ -168,6 +170,7 @@ func DownloadBank(callback func(data []byte)) {
 
 	if tx7, err = Open(); err != nil {
 		log("error while initializing connection to tx7", err)
+		return
 	}
 
 	var sysexMessage []byte
@@ -247,6 +250,7 @@ func discover() (input portmidi.DeviceId, output portmidi.DeviceId, err error) {
 	}
 	if in == -1 || out == -1 {
 		err = errors.New("No Device Connected!")
+		return
 	} else {
 		input = portmidi.DeviceId(in)
 		output = portmidi.DeviceId(out)

@@ -11,6 +11,7 @@ type Library struct {
 	Banks      []Bank
 	FileCount  int
 	VoiceCount int
+	FolderName string
 }
 
 type Bank struct {
@@ -103,7 +104,7 @@ func OpenDir(foldername string) (Library, error) {
 		}
 	}
 
-	library := Library{Banks: banks, FileCount: len(banks), VoiceCount: voiceCount}
+	library := Library{Banks: banks, FileCount: len(banks), VoiceCount: voiceCount, FolderName: foldername}
 
 	log(fmt.Sprintf("Files:  [ %d ]", library.FileCount), nil)
 
@@ -113,12 +114,18 @@ func OpenDir(foldername string) (Library, error) {
 
 }
 
+func (l *Library) Length() int {
+
+	return len(l.Banks)
+
+}
+
 func (l *Library) DisplayFileNames() {
 
 	i := 0
 	for _, bank := range l.Banks {
 		i++
-		log(fmt.Sprintf("[# %d] File Name: [%s]", i, bank.FileName), nil)
+		log(fmt.Sprintf("[# %d]		File Name: [%s]", i, bank.FileName), nil)
 	}
 
 }
@@ -134,7 +141,6 @@ func (l *Library) DisplayVoiceNames() {
 		}
 
 	}
-
 }
 
 func Open(fileName string) (Bank, error) {
