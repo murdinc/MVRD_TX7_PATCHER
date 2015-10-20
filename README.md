@@ -7,13 +7,15 @@ There are tools like Sysex Librarian which will send an entire bank of 32 patche
 
 This uses a copy of go-coremidi that I modified to allow me to send Sysex messages. Because of the coremidi dependancy, this will only run on Mac. 
 
+**Terminal User Interface:**
+
+![screenshot1](screenshots/MVRD_TX7_PATCHER.png)
+
 **Completed:**
 * Reads in Sysex files and breaks it out into a struct showing values of each patch.
 * Dumps Bank data from the DX7/TX7.
+* Processes an entire directory of SYX files and presents them as a menu of selectable voices
+* Packages and sends individual voices to Synth, allowing you to mix and match voices into a new bank.
 
 **Coming Up:** 
-* Sysex data verification
-* Patch combiner
-* Ability to upload new Banks and individual voices
-* Ability to edit / create voices. 
-* Integration with termui (https://github.com/gizak/termui)
+* Ability to edit / create new voices. 
