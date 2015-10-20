@@ -135,6 +135,18 @@ func Start(l parse.Library) {
 				selectedVoice = 0
 			}
 
+			// P - Previous
+			if e.Type == ui.EventKey && e.Ch == 'p' {
+				selectedVoice--
+				sendVoice = true
+			}
+
+			// N - Next
+			if e.Type == ui.EventKey && e.Ch == 'n' {
+				selectedVoice++
+				sendVoice = true
+			}
+
 			// Enter or Space
 			if e.Type == ui.EventKey && (e.Key == ui.KeyEnter || e.Key == ui.KeySpace) {
 				sendVoice = true
