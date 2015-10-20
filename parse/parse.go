@@ -114,6 +114,45 @@ func OpenDir(foldername string) (Library, error) {
 
 }
 
+func (l *Library) BuildSysex(bankIndex int, voiceIndex int) []byte {
+
+	voice := l.Banks[bankIndex].Voice[voiceIndex]
+
+	sysex := []byte{0xF0, 0x43, 0x00, 0x00, 0x01, 0x1B} // data1 - data155 --- checksum, 0xF7
+
+	for _, oper := range voice.Operators {
+		sysex = append(sysex, []byte{
+			oper.EGRate1, oper.EGRate2, oper.EGRate3, oper.EGRate4, oper.EGLevel1, oper.EGLevel2, oper.EGLevel3, oper.EGLevel4,
+			oper.LevelScalingBreakPoint, oper.ScaleLeftDepth, oper.ScaleRightDepth, oper.ScaleLeftCurve, oper.ScaleRightCurve,
+			oper.RateScale, oper.AmplitudeModulationSensitivity, oper.KeyVelocitySensitivity, oper.OutputLevel, oper.OscillatorMode,
+			oper.FrequencyCoarse, oper.FrequencyFine, oper.Detune}...)
+	}
+
+	sysex = append(sysex, []byte{
+		voice.PitchEGRate1, voice.PitchEGRate2, voice.PitchEGRate3, voice.PitchEGRate4,
+		voice.PitchEGLevel1, voice.PitchEGLevel2, voice.PitchEGLevel3, voice.PitchEGLevel4,
+		voice.Algorithm, voice.Feedback, voice.OscKeySync, voice.LfoSpeed, voice.LfoDelay,
+		voice.LfoPitchModDepth, voice.LfoAMDepth, voice.LfoSync, voice.LfoWave, voice.LfoPitchModSensitivity,
+		voice.Transpose}...)
+
+	sysex = append(sysex, []byte(voice.Name)...)
+
+	sysex = append(sysex, checksum(sysex[6:161]), 0xF7)
+
+	return sysex
+}
+
+func checksum(block []byte) byte {
+	crc := byte(0x00)
+	for i := 0; i < len(block); i++ {
+		crc += (block[i] & 0x7F)
+	}
+	crc = (^crc) + 1
+	crc &= 0x7F
+	return crc
+
+}
+
 func (l *Library) Length() int {
 
 	return len(l.Banks)
@@ -443,6 +482,12 @@ func (bank *Bank) DisplayVoices() error {
 	}
 
 	log(fmt.Sprintf("Checksum: %X", bank.Checksum), nil)
+
+	dataRange := bank.Raw[6:161]
+	checkSum := checksum(dataRange)
+	log(fmt.Sprintf("Calculated Checksum: %X", checkSum), nil)
+	log(fmt.Sprintf("Calculated Checksum Length: %d", len(dataRange)), nil)
+
 	log(fmt.Sprintf("End: %X", bank.End), nil)
 
 	return nil

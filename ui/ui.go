@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	ui "github.com/gizak/termui"
+	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
 	"github.com/murdinc/MVRD_TX7_PATCHER/parse"
 )
 
@@ -76,6 +77,14 @@ func Start(l parse.Library) {
 
 		list.Items = voices
 
+		// Send Voice !
+		if displayData.SendVoice == true {
+
+			sysex := l.BuildSysex(displayData.BankIndex, displayData.VoiceIndex)
+			midi.Upload(sysex)
+
+		}
+
 		ui.Render(p, list, info)
 	}
 
@@ -126,8 +135,8 @@ func Start(l parse.Library) {
 				selectedVoice = 0
 			}
 
-			// Enter
-			if e.Type == ui.EventKey && e.Key == ui.KeyEnter {
+			// Enter or Space
+			if e.Type == ui.EventKey && (e.Key == ui.KeyEnter || e.Key == ui.KeySpace) {
 				sendVoice = true
 			}
 
