@@ -5,7 +5,7 @@ The Yamaha DX7 was released in 1983, and turned out to be one of the most popula
 
 There are tools like Sysex Librarian which will send an entire bank of 32 patches to the synth, And MidiQuest allows you to edit the patches, but its clunky and not a very enjoyable experience. I wanted a way to combine individual patches from the collection of .SXY files in public domain into custom banks, so that I wouldnt have to reprogram the whole bank to switch to a different sound. 
 
-This uses a copy of go-coremidi that I modified to allow me to send Sysex messages. Because of the coremidi dependancy, this will only run on Mac. 
+This uses a fork of the portmidi library that has been modified to expost the entire Message byte array.  
 
 **Terminal User Interface:**
 
