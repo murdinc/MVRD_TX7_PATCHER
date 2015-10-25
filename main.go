@@ -33,12 +33,12 @@ func main() {
 			},
 		},
 		{
-			Name:        "test",
-			ShortName:   "t",
-			Example:     "parse /foldername",
-			Description: "Parse all sysex files in a directory and display contents",
+			Name:        "run",
+			ShortName:   "r",
+			Example:     "run /foldername",
+			Description: "Parse all sysex files in a directory and start program",
 			Arguments: []cli.Argument{
-				cli.Argument{Name: "folder", Usage: "parse /foldername", Description: "The name of the sysex folder to parse", Optional: false},
+				cli.Argument{Name: "folder", Usage: "run /foldername", Description: "The name of the sysex folder to run against", Optional: false},
 			},
 			Action: func(c *cli.Context) {
 				library, _ := parse.OpenDir(c.NamedArg("folder"))
