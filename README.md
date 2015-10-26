@@ -5,15 +5,17 @@ The Yamaha DX7 was released in 1983, and turned out to be one of the most popula
 
 There are tools like Sysex Librarian which will send an entire bank of 32 patches to the synth, And MidiQuest allows you to edit the patches, but its clunky and not a very enjoyable experience. I wanted a way to combine individual patches from the collection of .SXY files in public domain into custom banks, so that I wouldnt have to reprogram the whole bank to switch to a different sound. 
 
-This uses a copy of go-coremidi that I modified to allow me to send Sysex messages. Because of the coremidi dependancy, this will only run on Mac. 
+This uses a fork of the portmidi library that has been modified to expost the entire Message byte array.  
+
+**Terminal User Interface:**
+
+![screenshot1](screenshots/MVRD_TX7_PATCHER.png)
 
 **Completed:**
 * Reads in Sysex files and breaks it out into a struct showing values of each patch.
 * Dumps Bank data from the DX7/TX7.
+* Processes an entire directory of SYX files and presents them as a menu of selectable voices
+* Packages and sends individual voices to Synth, allowing you to mix and match voices into a new bank.
 
 **Coming Up:** 
-* Sysex data verification
-* Patch combiner
-* Ability to upload new Banks and individual voices
-* Ability to edit / create voices. 
-* Integration with termui (https://github.com/gizak/termui)
+* Ability to edit / create new voices. 
