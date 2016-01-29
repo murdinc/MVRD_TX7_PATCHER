@@ -80,7 +80,7 @@ func Upload(sysex []byte) {
 		return
 	}
 
-	err = tx7.outputStream.WriteSysEx(portmidi.Time(), string(sysex))
+	err = tx7.outputStream.WriteSysExBytes(portmidi.Time(), sysex)
 	if err != nil {
 		log("WriteSysEx", err)
 	}
@@ -112,7 +112,7 @@ func DownloadVoice(callback func(data []byte)) {
 	sysexRecieving := false
 	sysexRequest := []byte{0xF0, 0x43, 0x20, 0x00, 0x00, 0xF7} // 1 voice
 
-	tx7.outputStream.WriteSysEx(portmidi.Time(), string(sysexRequest))
+	tx7.outputStream.WriteSysExBytes(portmidi.Time(), sysexRequest)
 
 Loop:
 	for {
