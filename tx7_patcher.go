@@ -22,7 +22,6 @@ func main() {
 		{
 			Name:        "parse",
 			ShortName:   "p",
-			Example:     "parse patch.syx",
 			Description: "Parse a sysex file and display contents",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to parse", Optional: false},
@@ -35,7 +34,6 @@ func main() {
 		{
 			Name:        "run",
 			ShortName:   "r",
-			Example:     "run /foldername",
 			Description: "Parse all sysex files in a directory and start program",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "run /foldername", Description: "The name of the sysex folder to run against", Optional: false},
@@ -48,7 +46,6 @@ func main() {
 		{
 			Name:        "listFiles",
 			ShortName:   "lf",
-			Example:     "listFiles /foldername",
 			Description: "List all sysex files in a directory and display contents",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "listFiles /foldername", Description: "The name of the sysex folder to parse", Optional: false},
@@ -61,7 +58,6 @@ func main() {
 		{
 			Name:        "listVoiceNames",
 			ShortName:   "lvn",
-			Example:     "listVoiceNames /foldername",
 			Description: "List all voice names of all the sysex files in a directory",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "listVoiceNames /foldername", Description: "The name of the sysex folder to parse", Optional: false},
@@ -74,7 +70,6 @@ func main() {
 		{
 			Name:        "upload",
 			ShortName:   "u",
-			Example:     "upload ./sysex/WEIRD1.SYX",
 			Description: "upload",
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "sysex", Usage: "upload ./sysex/WEIRD1.SYX", Description: "The name of the sysex bank file to upload", Optional: false},
@@ -87,7 +82,6 @@ func main() {
 		{
 			Name:        "displayVoice",
 			ShortName:   "dv",
-			Example:     "displayVoice",
 			Description: "Download the currently selected voice and Display it",
 			Action: func(c *cli.Context) {
 
@@ -102,7 +96,6 @@ func main() {
 		{
 			Name:        "displayBank",
 			ShortName:   "db",
-			Example:     "displayBank",
 			Description: "Download the bank and Display it",
 			Action: func(c *cli.Context) {
 
