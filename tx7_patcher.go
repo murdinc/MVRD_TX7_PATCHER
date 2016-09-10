@@ -16,7 +16,6 @@ func main() {
 
 	app := cli.NewApp()
 	app.Name = "TX7 Patcher"
-	app.Usage = "Command Line Interface for managing patches on the Yamaha DX7 and TX7 Synthesizers"
 	app.Version = "1.0"
 	app.Commands = []cli.Command{
 		{
@@ -26,9 +25,10 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "sysex", Usage: "parse patch.syx", Description: "The name of the sysex file to parse", Optional: false},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				bank, _ := parse.Open(c.NamedArg("sysex"))
 				bank.DisplayVoices()
+				return nil
 			},
 		},
 		{
@@ -38,9 +38,10 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "run /foldername", Description: "The name of the sysex folder to run against", Optional: false},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				library, _ := parse.OpenDir(c.NamedArg("folder"))
 				ui.Start(library)
+				return nil
 			},
 		},
 		{
@@ -50,9 +51,10 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "listFiles /foldername", Description: "The name of the sysex folder to parse", Optional: false},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				library, _ := parse.OpenDir(c.NamedArg("folder"))
 				library.DisplayFileNames()
+				return nil
 			},
 		},
 		{
@@ -62,9 +64,10 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "folder", Usage: "listVoiceNames /foldername", Description: "The name of the sysex folder to parse", Optional: false},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				library, _ := parse.OpenDir(c.NamedArg("folder"))
 				library.DisplayVoiceNames()
+				return nil
 			},
 		},
 		{
@@ -74,16 +77,17 @@ func main() {
 			Arguments: []cli.Argument{
 				cli.Argument{Name: "sysex", Usage: "upload ./sysex/WEIRD1.SYX", Description: "The name of the sysex bank file to upload", Optional: false},
 			},
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 				sysex, _ := parse.Open(c.NamedArg("sysex"))
 				midi.Upload(sysex.Raw)
+				return nil
 			},
 		},
 		{
 			Name:        "displayVoice",
 			ShortName:   "dv",
 			Description: "Download the currently selected voice and Display it",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 
 				callback := func(sysexBytes []byte) {
 					bank, _ := parse.New(sysexBytes)
@@ -91,13 +95,14 @@ func main() {
 				}
 
 				midi.DownloadVoice(callback)
+				return nil
 			},
 		},
 		{
 			Name:        "displayBank",
 			ShortName:   "db",
 			Description: "Download the bank and Display it",
-			Action: func(c *cli.Context) {
+			Action: func(c *cli.Context) error {
 
 				callback := func(sysexBytes []byte) {
 					bank, _ := parse.New(sysexBytes)
@@ -105,6 +110,7 @@ func main() {
 				}
 
 				midi.DownloadBank(callback)
+				return nil
 			},
 		},
 	}
