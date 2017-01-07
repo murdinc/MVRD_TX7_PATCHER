@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	ui "github.com/gizak/termui"
-	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
 	"github.com/murdinc/MVRD_TX7_PATCHER/parse"
+	"github.com/murdinc/MVRD_TX7_PATCHER/tx7"
 )
 
 type DisplayData struct {
@@ -22,12 +22,13 @@ type DisplayData struct {
 	VoiceIndex int
 }
 
-func Start(l parse.Library) {
+func Start(l parse.Library, synth *tx7.TX7) {
 	err := ui.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer ui.Close()
+	defer synth.Close()
 
 	// Header and Instructions
 	p := ui.NewPar(" Tool for building banks of voices on the Yamaha TX7 and DX7 synths. \n\n Press 'B' and 'E' go to the beginning and end. \n\n Press 'Q' to quit.\n\n Use arrows and enter key to select and upload voice.")
@@ -81,7 +82,7 @@ func Start(l parse.Library) {
 		if displayData.SendVoice == true {
 
 			sysex := l.BuildSysex(displayData.BankIndex, displayData.VoiceIndex)
-			midi.Upload(sysex)
+			synth.Upload(sysex)
 
 		}
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/murdinc/MVRD_TX7_PATCHER/midi"
 	"github.com/murdinc/MVRD_TX7_PATCHER/parse"
+	"github.com/murdinc/MVRD_TX7_PATCHER/tx7"
 	"github.com/murdinc/MVRD_TX7_PATCHER/ui"
 	"github.com/murdinc/cli"
 )
@@ -40,7 +40,21 @@ func main() {
 			},
 			Action: func(c *cli.Context) error {
 				library, _ := parse.OpenDir(c.NamedArg("folder"))
-				ui.Start(library)
+
+				// Get device id's
+				input, output, err := tx7.Discover()
+				if err != nil {
+					return err
+				}
+
+				synth, err := tx7.New(input, output)
+				if err != nil {
+					return err
+				}
+
+				synth.Open()
+
+				ui.Start(library, synth)
 				return nil
 			},
 		},
@@ -79,7 +93,22 @@ func main() {
 			},
 			Action: func(c *cli.Context) error {
 				sysex, _ := parse.Open(c.NamedArg("sysex"))
-				midi.Upload(sysex.Raw)
+
+				// Get device id's
+				input, output, err := tx7.Discover()
+				if err != nil {
+					return err
+				}
+
+				synth, err := tx7.New(input, output)
+				if err != nil {
+					return err
+				}
+
+				synth.Open()
+
+				synth.Upload(sysex.Raw)
+
 				return nil
 			},
 		},
@@ -94,7 +123,21 @@ func main() {
 					bank.DisplayVoices()
 				}
 
-				midi.DownloadVoice(callback)
+				// Get device id's
+				input, output, err := tx7.Discover()
+				if err != nil {
+					return err
+				}
+
+				synth, err := tx7.New(input, output)
+				if err != nil {
+					return err
+				}
+
+				synth.Open()
+
+				synth.DownloadVoice(callback)
+
 				return nil
 			},
 		},
@@ -109,7 +152,21 @@ func main() {
 					bank.DisplayVoices()
 				}
 
-				midi.DownloadBank(callback)
+				// Get device id's
+				input, output, err := tx7.Discover()
+				if err != nil {
+					return err
+				}
+
+				synth, err := tx7.New(input, output)
+				if err != nil {
+					return err
+				}
+
+				synth.Open()
+
+				synth.DownloadBank(callback)
+
 				return nil
 			},
 		},

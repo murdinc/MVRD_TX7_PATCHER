@@ -1,12 +1,12 @@
-package midi
+package tx7
 
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/murdinc/portmidi"
+	"github.com/murdinc/terminal"
 )
 
 var (
@@ -15,16 +15,14 @@ var (
 
 // TX7 represents a device with an input and output MIDI stream.
 type TX7 struct {
+	inputDevice  portmidi.DeviceId
+	outputDevice portmidi.DeviceId
 	inputStream  *portmidi.Stream
 	outputStream *portmidi.Stream
 }
 
-func Open() (*TX7, error) {
-	input, output, err := discover()
-	if err != nil {
-		return nil, err
-	}
-
+func New(input portmidi.DeviceId, output portmidi.DeviceId) (*TX7, error) {
+	var err error
 	var inStream, outStream *portmidi.Stream
 	if inStream, err = portmidi.NewInputStream(input, 1024); err != nil {
 		return nil, err
@@ -32,12 +30,36 @@ func Open() (*TX7, error) {
 	if outStream, err = portmidi.NewOutputStream(output, 1024, 0); err != nil {
 		return nil, err
 	}
-	return &TX7{inputStream: inStream, outputStream: outStream}, nil
+	return &TX7{inputDevice: input, outputDevice: output, inputStream: inStream, outputStream: outStream}, nil
+}
+
+func (t *TX7) Open() error {
+	var err error
+	var inStream, outStream *portmidi.Stream
+	if inStream, err = portmidi.NewInputStream(t.inputDevice, 1024); err != nil {
+		return err
+	}
+	if outStream, err = portmidi.NewOutputStream(t.outputDevice, 1024, 0); err != nil {
+		return err
+	}
+
+	t.inputStream = inStream
+	t.outputStream = outStream
+
+	return nil
+
+}
+
+func (t *TX7) Close() error {
+	return portmidi.Terminate()
 }
 
 // Read reads messages from the input stream. It returns max 64 messages for each read.
 func (t *TX7) Read() (events []portmidi.Event, err error) {
 	var evts []portmidi.Event
+
+	t.Open()
+
 	if evts, err = t.inputStream.Read(1024); err != nil {
 		return
 	}
@@ -66,53 +88,38 @@ func (t *TX7) Listen() <-chan portmidi.Event {
 	return ch
 }
 
-func Upload(sysex []byte) {
+func (t *TX7) Upload(sysex []byte) {
 
-	var err error
-
-	err = portmidi.Initialize()
+	err := portmidi.Initialize()
 	if err != nil {
-		log("Initialization", err)
-	}
-
-	if tx7, err = Open(); err != nil {
-		log("error while initializing connection to tx7", err)
 		return
 	}
 
-	err = tx7.outputStream.WriteSysExBytes(portmidi.Time(), sysex)
+	fmt.Sprintf("%d %d", t.inputDevice, t.outputDevice)
+
+	t.Open()
+
+	err = t.outputStream.WriteSysExBytes(portmidi.Time(), sysex)
 	if err != nil {
 		log("WriteSysEx", err)
 	}
 
-	tx7.TestNotes()
-
-	portmidi.Terminate()
+	t.TestNotes()
 
 }
 
-func DownloadVoice(callback func(data []byte)) {
-	var err error
-
-	err = portmidi.Initialize()
-	if err != nil {
-		log("Initialization", err)
-	}
-
-	if tx7, err = Open(); err != nil {
-		log("error while initializing connection to tx7", err)
-		return
-	}
-
+func (t *TX7) DownloadVoice(callback func(data []byte)) {
 	var sysexMessage []byte
 
+	t.Open()
+
 	// Set up Listener
-	ch := tx7.Listen()
+	ch := t.Listen()
 
 	sysexRecieving := false
 	sysexRequest := []byte{0xF0, 0x43, 0x20, 0x00, 0x00, 0xF7} // 1 voice
 
-	tx7.outputStream.WriteSysExBytes(portmidi.Time(), sysexRequest)
+	t.outputStream.WriteSysExBytes(portmidi.Time(), sysexRequest)
 
 Loop:
 	for {
@@ -140,32 +147,21 @@ Loop:
 
 	}
 
-	portmidi.Terminate()
-
 }
 
-func DownloadBank(callback func(data []byte)) {
-	var err error
-
-	err = portmidi.Initialize()
-	if err != nil {
-		log("Initialization", err)
-	}
-
-	if tx7, err = Open(); err != nil {
-		log("error while initializing connection to tx7", err)
-		return
-	}
+func (t *TX7) DownloadBank(callback func(data []byte)) {
 
 	var sysexMessage []byte
 
+	t.Open()
+
 	// Set up Listener
-	ch := tx7.Listen()
+	ch := t.Listen()
 
 	sysexRecieving := false
 	sysexRequest := []byte{0xF0, 0x43, 0x20, 0x09, 0x00, 0xF7} // 32 voices
 
-	tx7.outputStream.WriteSysEx(portmidi.Time(), string(sysexRequest))
+	t.outputStream.WriteSysEx(portmidi.Time(), string(sysexRequest))
 
 Loop:
 	for {
@@ -192,8 +188,6 @@ Loop:
 		}
 
 	}
-
-	portmidi.Terminate()
 }
 
 func (t *TX7) TestNotes() {
@@ -206,7 +200,6 @@ func (t *TX7) TestNotes() {
 	t.outputStream.WriteShort(0x90, 64, 100)
 	t.outputStream.WriteShort(0x90, 67, 100)
 
-	// notes will be sustained for 2 seconds
 	time.Sleep(time.Second / 4)
 
 	// note off events
@@ -216,29 +209,35 @@ func (t *TX7) TestNotes() {
 
 }
 
-func discover() (input portmidi.DeviceId, output portmidi.DeviceId, err error) {
-	in := -1
-	out := -1
+func Discover() (input portmidi.DeviceId, output portmidi.DeviceId, err error) {
+
+	err = portmidi.Initialize()
+	if err != nil {
+		return
+	}
+
+	if portmidi.CountDevices() < 1 {
+		err = errors.New("No MIDI Device Detected!")
+		return
+	}
+
 	for i := 0; i < portmidi.CountDevices(); i++ {
 		info := portmidi.GetDeviceInfo(portmidi.DeviceId(i))
-		if strings.Contains(info.Name, " 1") {
-			if info.IsInputAvailable {
-				in = i
-				//log(fmt.Sprintf("Input: %s", info.Name), nil)
-			}
-			if info.IsOutputAvailable {
-				out = i
-				//log(fmt.Sprintf("Output: %s", info.Name), nil)
-			}
+
+		if info.IsInputAvailable {
+			terminal.Response(fmt.Sprintf("[ %d ]		Input		%s", i+1, info.Name))
+		}
+		if info.IsOutputAvailable {
+			terminal.Prompt(fmt.Sprintf("[ %d ]		Output		%s", i+1, info.Name))
 		}
 	}
-	if in == -1 || out == -1 {
-		err = errors.New("No Device Connected!")
-		return
-	} else {
-		input = portmidi.DeviceId(in)
-		output = portmidi.DeviceId(out)
-	}
+
+	inputDevice := terminal.PromptInt("Please select the MIDI INPUT device:", portmidi.CountDevices()+1) - 1
+	outputDevice := terminal.PromptInt("Please select the MIDI OUTPUT device:", portmidi.CountDevices()+1) - 1
+
+	input = portmidi.DeviceId(inputDevice)
+	output = portmidi.DeviceId(outputDevice)
+
 	return
 }
 
