@@ -2,22 +2,31 @@ package parse
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/mitchellh/hashstructure"
+	"github.com/murdinc/terminal"
 )
 
 type Library struct {
-	Banks      []Bank
-	FileCount  int
-	VoiceCount int
-	FolderName string
+	//Banks      []Bank
+	voices    []Voice
+	FileCount int
+	//VoiceCount int
+	Duplicates    int
+	FolderName    string
+	HashMap       map[uint64]string
+	SearchStr     string
+	searchResults []Voice
 }
 
 type Bank struct {
 	FileName         string
 	VoiceCount       int
-	Voice            []Voice
+	Voices           []Voice
 	Raw              []byte
 	Start            byte
 	Manufacturer     byte
@@ -26,6 +35,7 @@ type Bank struct {
 	Size             int16
 	Checksum         byte
 	End              byte
+	HashMap          *map[uint64]string
 }
 
 type Voice struct {
@@ -50,6 +60,7 @@ type Voice struct {
 	LfoPitchModSensitivity byte
 	Transpose              byte
 	Name                   string
+	BankFileName           string `hash:"ignore"`
 }
 
 type Operator struct {
@@ -82,41 +93,84 @@ const debug = false
 
 func OpenDir(foldername string) (Library, error) {
 
-	files, err := ioutil.ReadDir(foldername)
-	if err != nil {
-		log("OpenDir", err)
-	}
+	terminal.Information("Reading sysex folder...")
+
+	files := []string{}
+	filepath.Walk(foldername, func(path string, f os.FileInfo, err error) error {
+		files = append(files, path)
+		return nil
+	})
+
+	//
 
 	banks := make([]Bank, 0)
-	voiceCount := 0
+	voices := make([]Voice, 0)
+	duplicates := 0
+	hashMap := make(map[uint64]string)
 
 	for _, file := range files {
-		if strings.HasSuffix(strings.ToLower(file.Name()), ".syx") {
+		if strings.HasSuffix(strings.ToLower(file), ".syx") {
 			//log(fmt.Sprintf("Scanning File: [%s]", file.Name()), nil)
 
-			bank, err := Open(foldername + file.Name())
+			bank, bankDuplicates, err := Open(file, &hashMap)
+			duplicates += bankDuplicates
 
 			if err == nil {
 				banks = append(banks, bank)
-				voiceCount += 32
-				bank.Parse()
+				voices = append(voices, bank.Voices...)
 			}
 		}
 	}
 
-	library := Library{Banks: banks, FileCount: len(banks), VoiceCount: voiceCount, FolderName: foldername}
+	foldername = strings.TrimPrefix(foldername, "./")
+
+	library := Library{voices: voices, FileCount: len(banks), FolderName: foldername, Duplicates: duplicates}
 
 	log(fmt.Sprintf("Files:  [ %d ]", library.FileCount), nil)
 
-	log(fmt.Sprintf("Voices: [ %d ]", library.VoiceCount), nil)
+	log(fmt.Sprintf("Voices: [ %d ]", library.VoiceCount()), nil)
 
 	return library, nil
 
 }
 
-func (l *Library) BuildSysex(bankIndex int, voiceIndex int) []byte {
+func (l *Library) Voices() []Voice {
 
-	voice := l.Banks[bankIndex].Voice[voiceIndex]
+	if len(l.SearchStr) > 0 {
+		l.searchResults = []Voice{}
+
+		term := regexp.MustCompile(strings.ToLower(l.SearchStr))
+
+	Loop:
+		for _, voice := range l.voices {
+
+			if term.MatchString(strings.ToLower(voice.Name)) {
+				l.searchResults = append(l.searchResults, voice)
+				continue Loop
+			}
+		}
+
+		//if len(l.searchResults) > 0 {
+		return l.searchResults
+		//}
+	}
+
+	return l.voices
+}
+
+func (l *Library) Search(str string) {
+	l.SearchStr = str
+
+	return
+}
+
+func (l *Library) VoiceCount() int {
+	return len(l.Voices())
+}
+
+func (l *Library) BuildSysex(voiceIndex int) []byte {
+
+	voice := l.Voices()[voiceIndex]
 
 	sysex := []byte{0xF0, 0x43, 0x00, 0x00, 0x01, 0x1B} // data1 - data155 --- checksum, 0xF7
 
@@ -137,7 +191,7 @@ func (l *Library) BuildSysex(bankIndex int, voiceIndex int) []byte {
 
 	sysex = append(sysex, []byte(voice.Name)...)
 
-	sysex = append(sysex, checksum(sysex[6:161]), 0xF7)
+	sysex = append(sysex, checksum(sysex[6:]), 0xF7)
 
 	return sysex
 }
@@ -155,40 +209,28 @@ func checksum(block []byte) byte {
 
 func (l *Library) Length() int {
 
-	return len(l.Banks)
-
-}
-
-func (l *Library) DisplayFileNames() {
-
-	i := 0
-	for _, bank := range l.Banks {
-		i++
-		log(fmt.Sprintf("[# %d]		File Name: [%s]", i, bank.FileName), nil)
-	}
+	return l.FileCount
 
 }
 
 func (l *Library) DisplayVoiceNames() {
 
 	i := 0
-	for _, bank := range l.Banks {
 
-		for _, voice := range bank.Voice {
-			i++
-			log(fmt.Sprintf("[# %d]		Voice Name: [%s]		File Name: [%s] ", i, voice.Name, bank.FileName), nil)
-		}
-
+	for _, voice := range l.Voices() {
+		i++
+		log(fmt.Sprintf("[# %d]		Voice Name: [%s]		File Name: [%s] ", i, voice.Name, voice.BankFileName), nil)
 	}
+
 }
 
-func Open(fileName string) (Bank, error) {
+func Open(fileName string, hashMap *map[uint64]string) (Bank, int, error) {
 
 	f, err := os.Open(fileName)
 	fi, err := f.Stat()
 	if err != nil {
 		log(fmt.Sprintf("Open - Error opening bank file %s", fileName), err)
-		return Bank{}, err
+		return Bank{}, 0, err
 	}
 	defer f.Close()
 
@@ -199,26 +241,24 @@ func Open(fileName string) (Bank, error) {
 	_, err = f.Read(sysexFile)
 	if err != nil {
 		log("Open - Error reading bank file", err)
-		return Bank{}, err
+		return Bank{}, 0, err
 	}
-	//log(fmt.Sprintf("Open - reading %d bytes from bank file.", n), nil)
-	//log(fmt.Sprintf("Open - [%s] is %d bytes long", fileName, fileSize), nil)
 
-	bank := Bank{Raw: sysexFile, FileName: fileName}
+	bank := Bank{Raw: sysexFile, FileName: fileName, HashMap: hashMap}
 
-	err = bank.Parse()
+	duplicates, err := bank.Parse()
 	if err != nil {
 		log("Open - Error parsing bank file", err)
-		return Bank{}, err
+		return Bank{}, 0, err
 	}
 
-	return bank, nil
+	return bank, duplicates, nil
 }
 
 func New(raw []byte) (Bank, error) {
 	bank := Bank{Raw: raw}
 
-	err := bank.Parse()
+	_, err := bank.Parse()
 	if err != nil {
 		log("New - Error parsing bank file", err)
 		return Bank{}, err
@@ -227,35 +267,64 @@ func New(raw []byte) (Bank, error) {
 	return bank, nil
 }
 
-func (bank *Bank) Parse() error {
+func (bank *Bank) Parse() (int, error) {
 	bank.Start = bank.Raw[0] //F0
 	bank.Manufacturer = bank.Raw[1]
 	bank.StatusAndChannel = bank.Raw[2]
 	bank.Format = bank.Raw[3]
 	bank.Size = int16((int16(bank.Raw[4]) << 7) | int16(bank.Raw[5]))
 
+	duplicates := 0
+
+	if bank.Start != 0xF0 {
+		//terminal.ErrorLine(fmt.Sprintf("Unknown Start / Status Byte: 0x%.2X, skipping: %v", bank.Start, bank.FileName))
+		return duplicates, nil
+	}
+
+	if (bank.Format != 0x00) && (bank.Format != 0x09) {
+		//terminal.ErrorLine(fmt.Sprintf("Unknown Bank Format: 0x%.2X, skipping: %v", bank.Format, bank.FileName))
+		return duplicates, nil
+	}
+
+	if len(bank.Raw) < int(bank.Size+8) {
+		//terminal.ErrorLine(fmt.Sprintf("Unexpectedly truncated File Size. Bank Format: 0x%.2X, FILE: %v", bank.Format, bank.FileName))
+		return duplicates, nil
+	}
+
 	switch bank.Format {
 	case 0x00:
 		bank.VoiceCount = 1
-		bank.doSingleVoice()
-	default:
+		duplicates = bank.doSingleVoice()
+		bank.VoiceCount -= duplicates
+		//bank.Size = 155
+
+	case 0x09:
 		bank.VoiceCount = 32
-		bank.doBulkVoices()
+		duplicates = bank.doBulkVoices()
+		bank.VoiceCount -= duplicates
+		//bank.Size = 4096
+
+	default:
+		terminal.ErrorLine(fmt.Sprintf("Unknown Bank Format: 0x%.2X, skipping: %v", bank.Format, bank.FileName))
+		return duplicates, nil
 	}
 
-	bank.Checksum = bank.Raw[bank.Size+6]
-	bank.End = bank.Raw[bank.Size+7] //F7
+	//terminal.Information(fmt.Sprintf("Bank Format: 0x%.2X, Bank Size: %d file: %v", bank.Format, bank.Size, bank.FileName))
 
-	return nil
+	bank.Checksum = bank.Raw[bank.Size+6]
+	bank.End = bank.Raw[bank.Size+7]
+
+	return duplicates, nil
 }
 
-func (bank *Bank) doSingleVoice() {
+func (bank *Bank) doSingleVoice() int {
 
 	voiceStart := 6
+	duplicates := 0
 
-	bank.Voice = make([]Voice, 1)
+	bank.Voices = make([]Voice, 1)
 
-	bank.Voice[0] = Voice{
+	voice := Voice{
 
 		Operators: doSingleVoiceOperators(bank.Raw[voiceStart : voiceStart+126]),
 
@@ -285,19 +354,39 @@ func (bank *Bank) doSingleVoice() {
 
 		Transpose: bank.Raw[voiceStart+144],
 
-		Name: string(bank.Raw[voiceStart+145 : voiceStart+155]),
+		Name:         string(bank.Raw[voiceStart+145 : voiceStart+155]),
+		BankFileName: bank.FileName,
 	}
 
+	voiceHash, _ := hashstructure.Hash(voice, nil)
+
+	if _, ok := (*bank.HashMap)[voiceHash]; ok {
+		//terminal.Notice("Duplicate found!	-	" + existingName)
+		duplicates++
+
+	} else {
+		bank.Voices[0] = voice
+		(*bank.HashMap)[voiceHash] = voice.Name
+	}
+
+	return duplicates
 }
 
-func (bank *Bank) doBulkVoices() {
-	bank.Voice = make([]Voice, 32)
+func (bank *Bank) doBulkVoices() int {
+	bank.Voices = make([]Voice, 32)
 
 	voiceStart := 6
+	duplicates := 0
 
 	for i := 0; i < bank.VoiceCount; i++ {
 
-		bank.Voice[i] = Voice{
+		end := voiceStart + 128
+
+		if len(bank.Raw[voiceStart+118:]) < 10 {
+			end = len(bank.Raw[voiceStart+118:]) + voiceStart + 118
+		}
+
+		voice := Voice{
 
 			Operators: doBulkOperators(bank.Raw[voiceStart : voiceStart+102]),
 
@@ -327,11 +416,25 @@ func (bank *Bank) doBulkVoices() {
 
 			Transpose: bank.Raw[voiceStart+117],
 
-			Name: string(bank.Raw[voiceStart+118 : voiceStart+128]),
+			Name:         string(bank.Raw[voiceStart+118 : end]),
+			BankFileName: bank.FileName,
+		}
+
+		voiceHash, _ := hashstructure.Hash(voice, nil)
+
+		if _, ok := (*bank.HashMap)[voiceHash]; ok {
+			duplicates++
+			bank.Voices = bank.Voices[:len(bank.Voices)-1]
+
+		} else {
+			bank.Voices[i-duplicates] = voice
+			(*bank.HashMap)[voiceHash] = voice.Name
 		}
 
 		voiceStart += 128
 	}
+
+	return duplicates
 
 }
 
@@ -436,10 +539,10 @@ func (bank *Bank) DisplayVoices() error {
 	log(fmt.Sprintf("Voice Count: %d", bank.VoiceCount), nil)
 
 	for i := 0; i < bank.VoiceCount; i++ {
-		log(fmt.Sprintf("[%d] Name: %v", i+1, bank.Voice[i].Name), nil)
+		log(fmt.Sprintf("[%d] Name: %v", i+1, bank.Voices[i].Name), nil)
 
 		// Start Operators
-		for n, operator := range bank.Voice[i].Operators {
+		for n, operator := range bank.Voices[i].Operators {
 			log(fmt.Sprintf("		Operator %d", n+1), nil)
 			log(fmt.Sprintf("			EGRate1: %.2d		EGLevel1: %.2d		ScaleLeftDepth:  %d", operator.EGRate1, operator.EGLevel1, operator.ScaleLeftDepth), nil)
 			log(fmt.Sprintf("			EGRate2: %.2d		EGLevel2: %.2d		ScaleRightDepth: %d", operator.EGRate2, operator.EGLevel2, operator.ScaleRightDepth), nil)
@@ -458,25 +561,25 @@ func (bank *Bank) DisplayVoices() error {
 		}
 		// End Operators
 
-		log(fmt.Sprintf("		PitchEGRate1: %.2d		PitchEGLevel1: %.2d", bank.Voice[i].PitchEGRate1, bank.Voice[i].PitchEGLevel1), nil)
-		log(fmt.Sprintf("		PitchEGRate2: %.2d		PitchEGLevel2: %.2d", bank.Voice[i].PitchEGRate2, bank.Voice[i].PitchEGLevel2), nil)
-		log(fmt.Sprintf("		PitchEGRate3: %.2d		PitchEGLevel3: %.2d", bank.Voice[i].PitchEGRate3, bank.Voice[i].PitchEGLevel3), nil)
-		log(fmt.Sprintf("		PitchEGRate4: %.2d		PitchEGLevel4: %.2d", bank.Voice[i].PitchEGRate4, bank.Voice[i].PitchEGLevel4), nil)
+		log(fmt.Sprintf("		PitchEGRate1: %.2d		PitchEGLevel1: %.2d", bank.Voices[i].PitchEGRate1, bank.Voices[i].PitchEGLevel1), nil)
+		log(fmt.Sprintf("		PitchEGRate2: %.2d		PitchEGLevel2: %.2d", bank.Voices[i].PitchEGRate2, bank.Voices[i].PitchEGLevel2), nil)
+		log(fmt.Sprintf("		PitchEGRate3: %.2d		PitchEGLevel3: %.2d", bank.Voices[i].PitchEGRate3, bank.Voices[i].PitchEGLevel3), nil)
+		log(fmt.Sprintf("		PitchEGRate4: %.2d		PitchEGLevel4: %.2d", bank.Voices[i].PitchEGRate4, bank.Voices[i].PitchEGLevel4), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("		Algorithm: %.2d			Feedback: %.2d			OscKeySync: %.2d", bank.Voice[i].Algorithm, bank.Voice[i].Feedback, bank.Voice[i].OscKeySync), nil)
+		log(fmt.Sprintf("		Algorithm: %.2d			Feedback: %.2d			OscKeySync: %.2d", bank.Voices[i].Algorithm, bank.Voices[i].Feedback, bank.Voices[i].OscKeySync), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("		LfoSpeed: %.2d			LfoPitchModDepth: %.2d", bank.Voice[i].LfoSpeed, bank.Voice[i].LfoPitchModDepth), nil)
-		log(fmt.Sprintf("		LfoDelay: %.2d			LfoAMDepth: %.2d", bank.Voice[i].LfoDelay, bank.Voice[i].LfoAMDepth), nil)
+		log(fmt.Sprintf("		LfoSpeed: %.2d			LfoPitchModDepth: %.2d", bank.Voices[i].LfoSpeed, bank.Voices[i].LfoPitchModDepth), nil)
+		log(fmt.Sprintf("		LfoDelay: %.2d			LfoAMDepth: %.2d", bank.Voices[i].LfoDelay, bank.Voices[i].LfoAMDepth), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("		LfoSync: %.2d", bank.Voice[i].LfoSync), nil)
-		log(fmt.Sprintf("		LfoWave: %.2d", bank.Voice[i].LfoWave), nil)
-		log(fmt.Sprintf("		LfoPitchModSensitivity: %.2d", bank.Voice[i].LfoPitchModSensitivity), nil)
+		log(fmt.Sprintf("		LfoSync: %.2d", bank.Voices[i].LfoSync), nil)
+		log(fmt.Sprintf("		LfoWave: %.2d", bank.Voices[i].LfoWave), nil)
+		log(fmt.Sprintf("		LfoPitchModSensitivity: %.2d", bank.Voices[i].LfoPitchModSensitivity), nil)
 		log("", nil)
 
-		log(fmt.Sprintf("		Transpose: %.2d", bank.Voice[i].Transpose), nil)
+		log(fmt.Sprintf("		Transpose: %.2d", bank.Voices[i].Transpose), nil)
 		log("\n\n", nil)
 
 	}

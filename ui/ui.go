@@ -9,163 +9,78 @@ import (
 	"github.com/murdinc/MVRD_TX7_PATCHER/tx7"
 )
 
-type DisplayData struct {
-	// For Display Stuff
-	ListIndex     int
-	SelectedVoice int
-
-	// Trigger a Sysex Send
-	SendVoice bool
-
-	// Bank and Voice Index Numbers
-	BankIndex  int
-	VoiceIndex int
-}
-
 func Start(l parse.Library, synth *tx7.TX7) {
-	err := ui.Init()
-	if err != nil {
+	if err := ui.Init(); err != nil {
 		panic(err)
 	}
 	defer ui.Close()
 	defer synth.Close()
 
+	voiceList := l.Voices()
+	voiceCount := l.VoiceCount()
+
 	// Header and Instructions
-	p := ui.NewPar(" Tool for building banks of voices on the Yamaha TX7 and DX7 synths. \n\n Press 'B' and 'E' go to the beginning and end. \n\n Press 'Q' to quit.\n\n Use arrows and enter key to select and upload voice.")
-	p.Height = 14
-	p.Width = 75
-	p.TextFgColor = ui.ColorWhite
-	p.Border.Label = " MVRD_TX7_PATCHER "
-	p.Border.FgColor = ui.ColorWhite
-	p.Border.LabelFgColor = ui.ColorCyan
+	header := ui.NewPar(" ")
+	header.Height = 14
+	header.Width = 75
+	header.TextFgColor = ui.ColorWhite
+	header.BorderLabel = " MVRD_TX7_PATCHER "
+	header.BorderFg = ui.ColorWhite
+	header.BorderLabelFg = ui.ColorCyan
+
+	// List of Voices
+	list := ui.NewList()
+	list.BorderLabelFg = ui.ColorCyan
+	list.ItemFgColor = ui.ColorYellow
+	list.BorderFg = ui.ColorWhite
+	list.Height = 52
+	list.Width = 75
+	list.Y = 14
 
 	// Information on right
 	info := ui.NewPar(" ")
 	info.Height = 66
 	info.Width = 124
 	info.TextFgColor = ui.ColorWhite
-	info.Border.Label = " VOICE SETTINGS: "
-	info.Border.FgColor = ui.ColorWhite
-	info.Border.LabelFgColor = ui.ColorCyan
+	info.BorderLabel = " VOICE SETTINGS: "
+	info.BorderFg = ui.ColorWhite
+	info.BorderLabelFg = ui.ColorCyan
 	info.Y = 0
 	info.X = 76
 
-	// List of Voices
-	strs := VoiceNames(l)
-	list := ui.NewList()
-	list.Items = strs
-	list.Border.LabelFgColor = ui.ColorCyan
-	list.ItemFgColor = ui.ColorYellow
-	list.Border.FgColor = ui.ColorWhite
-	list.Border.Label = fmt.Sprintf(" AVAILABLE VOICES: [ %d ] in [ %d ] Banks ", l.VoiceCount, l.FileCount)
-	list.Height = 52
-	list.Width = 75
-	list.Y = 14
-
-	// Build output
-	draw := func(displayData DisplayData) {
-
-		bank := l.Banks[displayData.BankIndex]
-		voice := bank.Voice[displayData.VoiceIndex]
-
-		info.Text = BuildVoiceInfo(voice)
-
-		strs = VoiceNames(l)
-
-		voices := strs[displayData.ListIndex:displayData.SelectedVoice]
-		voices = append(voices, fmt.Sprintf(">%s", strs[displayData.SelectedVoice]))
-		voices = append(voices, strs[displayData.SelectedVoice+1:]...)
-
-		list.Items = voices
-
-		// Send Voice !
-		if displayData.SendVoice == true {
-
-			sysex := l.BuildSysex(displayData.BankIndex, displayData.VoiceIndex)
-			synth.Upload(sysex)
-
-		}
-
-		ui.Render(p, list, info)
-	}
-
-	// Event Channel
-	evt := ui.EventCh()
+	// Scroll Bar
+	scroll := ui.NewGauge()
+	scroll.Percent = 0
+	scroll.Width = 200
+	scroll.Height = 3
+	scroll.BarColor = ui.ColorRed
+	scroll.BorderFg = ui.ColorWhite
+	scroll.Y = 66
 
 	listIndex := 0
 	selectedVoice := 0
-	sendVoice := false
+	search := false
+	searchStr := ""
 
-	for {
+	// Build output
+	draw := func(listIndex int, selectedVoice int, sendVoice bool, search bool, searchStr string) {
 
-		select {
-		case e := <-evt:
+		header.Text = " Tool for building banks of voices on the Yamaha TX7 and DX7 synths. \n\n Press 'B' and 'E' go to the beginning and end. \n\n Press 'Q' to quit.\n\n Use arrows and enter key to select and upload voice."
+		header.Text += "\n\n	Search [ " + searchStr + " ]"
+		if search == true {
+			header.Text += " < \n\n	Search Mode! Press ESC to exit."
+		} else {
+			header.Text += fmt.Sprintf("\n\n Selected Voice: %d", selectedVoice+1)
+		}
 
-			// Q - Quit
-			if e.Type == ui.EventKey && e.Ch == 'q' {
-				return
-			}
+		if l.SearchStr != searchStr {
+			l.Search(searchStr)
 
-			// Right Arrow - Next Page
-			if e.Type == ui.EventKey && e.Key == ui.KeyArrowRight {
-				selectedVoice += 49
-			}
+			voiceList = l.Voices()
+			voiceCount = l.VoiceCount()
+		}
 
-			// Left Arrow - Previous Page
-			if e.Type == ui.EventKey && e.Key == ui.KeyArrowLeft {
-				selectedVoice -= 49
-			}
-
-			// Down Arrow - Next Voice
-			if e.Type == ui.EventKey && e.Key == ui.KeyArrowDown {
-				selectedVoice++
-			}
-
-			// Up Arrow - Previous Voice
-			if e.Type == ui.EventKey && e.Key == ui.KeyArrowUp {
-				selectedVoice--
-			}
-
-			// E - End of list
-			if e.Type == ui.EventKey && e.Ch == 'e' {
-				selectedVoice = l.VoiceCount - 1
-			}
-
-			// B - Begining of list
-			if e.Type == ui.EventKey && e.Ch == 'b' {
-				selectedVoice = 0
-			}
-
-			// P - Previous
-			if e.Type == ui.EventKey && e.Ch == 'p' {
-				selectedVoice--
-				sendVoice = true
-			}
-
-			// N - Next
-			if e.Type == ui.EventKey && e.Ch == 'n' {
-				selectedVoice++
-				sendVoice = true
-			}
-
-			// Enter or Space
-			if e.Type == ui.EventKey && (e.Key == ui.KeyEnter || e.Key == ui.KeySpace) {
-				sendVoice = true
-			}
-
-		default:
-
-			// Lower Limit
-			if selectedVoice <= 0 {
-				selectedVoice = 0
-				listIndex = 0
-			}
-
-			// Upper Limit
-			if selectedVoice >= l.VoiceCount {
-				selectedVoice = l.VoiceCount - 1
-				listIndex = l.VoiceCount - 50
-			}
+		if voiceCount > 0 {
 
 			// Resituate
 			if selectedVoice > listIndex+49 {
@@ -175,29 +90,222 @@ func Start(l parse.Library, synth *tx7.TX7) {
 				listIndex = selectedVoice
 			}
 
-			bankIndex := (selectedVoice * l.VoiceCount) / (l.VoiceCount) / 32
-			voiceIndex := selectedVoice - (bankIndex * 32)
+			strs := VoiceNames(l)
 
-			displayData := DisplayData{
-				ListIndex:     listIndex,
-				SelectedVoice: selectedVoice,
-				SendVoice:     sendVoice,
-				BankIndex:     bankIndex,
-				VoiceIndex:    voiceIndex,
+			if selectedVoice >= 0 && selectedVoice < len(voiceList) && selectedVoice < len(strs) {
+				info.Text = BuildVoiceInfo(voiceList[selectedVoice])
+
+				voices := strs[listIndex:selectedVoice]
+				voices = append(voices, fmt.Sprintf(">%s", strs[selectedVoice]))
+				voices = append(voices, strs[selectedVoice+1:]...)
+				list.Items = voices
+				scroll.Percent = ((selectedVoice + 1) * 100) / voiceCount
 			}
 
-			draw(displayData)
+			// Send Voice !
+			if sendVoice == true {
+				sysex := l.BuildSysex(selectedVoice)
+				synth.Upload(sysex)
+			}
 
-			// Reset
-			sendVoice = false
+		} else {
+			list.Items = []string{"		No Items Found !		"}
+		}
+
+		list.BorderLabel = fmt.Sprintf(" VOICES: [ %d ] in [ %d ] Banks ( [%d] Duplicate Voices ) ", voiceCount, l.FileCount, l.Duplicates)
+
+		ui.Render(header, list, info, scroll)
+	}
+
+	draw(listIndex, selectedVoice, false, search, searchStr)
+
+	// S - Search
+	ui.Handle("/sys/kbd/s", func(ui.Event) {
+		if search != true {
+			search = true
+		} else {
+			searchStr += "s"
+		}
+
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// ESC - Escape Search
+	ui.Handle("/sys/kbd/<escape>", func(ui.Event) {
+		if search == true {
+			search = false
+			draw(listIndex, selectedVoice, false, search, searchStr)
+		}
+	})
+
+	// Delete - Delete in Search
+	ui.Handle("/sys/kbd/C-8", func(ui.Event) {
+		if search == true {
+
+			sz := len(searchStr)
+			if sz > 0 {
+				searchStr = searchStr[:sz-1]
+			}
+
+			draw(listIndex, selectedVoice, false, search, searchStr)
+		}
+	})
+
+	// Keys
+	ui.Handle("/sys/kbd/", func(e ui.Event) {
+		if search == true {
+			//fmt.Println(e)
+
+			key := strings.TrimPrefix(e.Path, "/sys/kbd/")
+			if len(key) == 1 {
+				searchStr += key
+				selectedVoice = 0
+				listIndex = 0
+			}
+		}
+
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// handle key q pressing
+	ui.Handle("/sys/kbd/q", func(ui.Event) {
+		if search != true {
+			// press q to quit
+			ui.StopLoop()
+		} else {
+			searchStr += "q"
+		}
+	})
+
+	// Right Arrow - Next Page
+	ui.Handle("/sys/kbd/<right>", func(ui.Event) {
+		selectedVoice += 49
+
+		// Upper Limit
+		if selectedVoice >= voiceCount {
+			selectedVoice = voiceCount - 1
+			if l.VoiceCount() > 50 {
+				listIndex = voiceCount - 50
+			} else {
+				listIndex = 0
+			}
+		}
+
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// Left Arrow - Previous Page
+	ui.Handle("/sys/kbd/<left>", func(ui.Event) {
+		selectedVoice -= 49
+
+		// Lower Limit
+		if selectedVoice <= 0 {
+			selectedVoice = 0
+			listIndex = 0
+		}
+
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// Down Arrow - Next Voice
+	ui.Handle("/sys/kbd/<down>", func(ui.Event) {
+		if selectedVoice < voiceCount-1 {
+			selectedVoice++
+		} else {
+			selectedVoice = voiceCount - 1
+		}
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// Up Arrow - Previous Voice
+	ui.Handle("/sys/kbd/<up>", func(ui.Event) {
+		if selectedVoice > 0 {
+			selectedVoice--
+		} else {
+			selectedVoice = 0
+		}
+		draw(listIndex, selectedVoice, false, search, searchStr)
+	})
+
+	// E - End of list
+	ui.Handle("/sys/kbd/e", func(ui.Event) {
+		if search == false {
+			selectedVoice = l.VoiceCount() - 1
+		} else {
+			searchStr += "e"
+		}
+		draw(listIndex, selectedVoice, false, search, searchStr)
+
+	})
+
+	// B - Begining of list
+	ui.Handle("/sys/kbd/b", func(ui.Event) {
+		if search == false {
+			selectedVoice = 0
+		} else {
+			searchStr += "b"
+		}
+		draw(listIndex, selectedVoice, false, search, searchStr)
+
+	})
+
+	// P - Previous
+	ui.Handle("/sys/kbd/p", func(ui.Event) {
+		if search == false {
+			if selectedVoice > 0 {
+				selectedVoice--
+			} else {
+				selectedVoice = 0
+			}
+			draw(listIndex, selectedVoice, true, search, searchStr)
+		} else {
+			searchStr += "p"
+			draw(listIndex, selectedVoice, false, search, searchStr)
 
 		}
-	}
+	})
+
+	// N - Next
+	ui.Handle("/sys/kbd/n", func(ui.Event) {
+		if search == false {
+			if selectedVoice < voiceCount-1 {
+				selectedVoice++
+			} else {
+				selectedVoice = voiceCount - 1
+			}
+			draw(listIndex, selectedVoice, true, search, searchStr)
+		} else {
+			searchStr += "n"
+			draw(listIndex, selectedVoice, false, search, searchStr)
+		}
+	})
+
+	// Enter
+	ui.Handle("/sys/kbd/<enter>", func(ui.Event) {
+		if search == false {
+			draw(listIndex, selectedVoice, true, search, searchStr)
+		}
+
+	})
+
+	// Space
+	ui.Handle("/sys/kbd/<space>", func(ui.Event) {
+		if search == false {
+			draw(listIndex, selectedVoice, true, search, searchStr)
+		} else {
+			searchStr += " "
+			draw(listIndex, selectedVoice, false, search, searchStr)
+		}
+	})
+
+	ui.Loop()
+
 }
 
 func BuildVoiceInfo(voice parse.Voice) string {
 
 	voiceString := fmt.Sprintf(" Name: %v\n", voice.Name)
+	voiceString += fmt.Sprintf(" Filename: %v\n", voice.BankFileName)
 
 	// Start Operators
 	for n, operator := range voice.Operators {
@@ -228,7 +336,7 @@ func BuildVoiceInfo(voice parse.Voice) string {
 	voiceString += fmt.Sprintf("			PitchEGRate3: %.2d		PitchEGLevel3: %.2d\n", voice.PitchEGRate3, voice.PitchEGLevel3)
 	voiceString += fmt.Sprintf("			PitchEGRate4: %.2d		PitchEGLevel4: %.2d\n\n", voice.PitchEGRate4, voice.PitchEGLevel4)
 
-	voiceString += fmt.Sprintf("			Algorithm: %.2d			Feedback: %.2d			OscKeySync: %.2d\n\n", voice.Algorithm, voice.Feedback, voice.OscKeySync)
+	voiceString += fmt.Sprintf("			Algorithm: %.2d			Feedback: %.2d			OscKeySync: %.2d			Transpose: %.2d\n\n", voice.Algorithm, voice.Feedback, voice.OscKeySync, voice.Transpose)
 
 	voiceString += fmt.Sprintf("			LfoSpeed: %.2d			LfoPitchModDepth: %.2d\n", voice.LfoSpeed, voice.LfoPitchModDepth)
 	voiceString += fmt.Sprintf("			LfoDelay: %.2d			LfoAMDepth: %.2d\n\n", voice.LfoDelay, voice.LfoAMDepth)
@@ -236,8 +344,6 @@ func BuildVoiceInfo(voice parse.Voice) string {
 	voiceString += fmt.Sprintf("			LfoSync: %.2d\n", voice.LfoSync)
 	voiceString += fmt.Sprintf("			LfoWave: %.2d\n", voice.LfoWave)
 	voiceString += fmt.Sprintf("			LfoPitchModSensitivity: %.2d\n\n", voice.LfoPitchModSensitivity)
-
-	voiceString += fmt.Sprintf("			Transpose: %.2d", voice.Transpose)
 
 	return voiceString
 
@@ -248,20 +354,18 @@ func VoiceNames(l parse.Library) []string {
 	names := make([]string, 0)
 
 	i := 0
-	for _, bank := range l.Banks {
 
-		for _, voice := range bank.Voice {
-			i++
+	for _, voice := range l.Voices() {
+		i++
 
-			number := fmt.Sprintf("   # %d    ", i)
-			bankName := strings.TrimPrefix(bank.FileName, l.FolderName)
+		number := fmt.Sprintf("   # %d    ", i)
+		bankName := strings.TrimPrefix(voice.BankFileName, l.FolderName)
 
-			voiceName := addSpaces(number, 15) + fmt.Sprintf("%s  Bank: [%s] ", addSpaces(voice.Name, 20), bankName)
+		voiceName := addSpaces(number, 15) + fmt.Sprintf("%s  Bank: [%s] ", addSpaces(voice.Name, 20), bankName)
 
-			names = append(names, voiceName)
-		}
-
+		names = append(names, voiceName)
 	}
+
 	return names
 
 }
